@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista de Séries</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; background-color: #f1f1f1; }
+        h1 { color: #333; }
+        .container, .season-container, .episode-container { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); 
+            gap: 15px; 
+            justify-content: center; 
+        }
+        .card, .button { padding: 10px; border: 1px solid #ddd; text-align: center; border-radius: 8px; background-color: white; cursor: pointer; }
+        .card:hover, .button:hover { transform: scale(1.05); box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); }
+        #searchInput { margin: 20px 0; padding: 10px; font-size: 16px; width: 80%; max-width: 500px; border-radius: 5px; border: 1px solid #ddd; }
+        footer { margin-top: 30px; padding: 10px; background-color: #333; color: white; font-size: 14px; text-align: center; }
+        .back-button { margin: 15px; padding: 10px 15px; font-size: 16px; border: none; cursor: pointer; background-color: #007BFF; color: white; border-radius: 5px; }
+        .back-button:hover { background-color: #0056b3; }
+        .button-container { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+    <h1>Lista de Séries</h1>
+    <input type="file" id="fileInput">
+    <input type="text" id="searchInput" placeholder="Pesquisar séries..." />
+
+    <div id="seriesContainer" class="container"></div>
+    <div id="seasonsContainer" class="season-container"></div>
+    <div id="episodesContainer" class="episode-container"></div>
+
+    <footer>
+        <p>Desenvolvido por <strong>Douglas Alvarenga</strong></p>
+        <p>&copy; 2025 Todos os direitos reservados.</p>
+    </footer>
+
+    <script>
+        let series = new Map();
+        let timeout = null;
+
+        document.getElementById('fileInput').addEventListener('change', async function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const text = await file.text();
+            processM3U(text);
+        });
+
+        function processM3U(text) {
+            const lines = text.split(/\r?\n/);
+            series.clear();
+
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].startsWith('#EXTINF') && removeAccents(lines[i].toLowerCase()).includes('group-title="series')) {
+                    let name = "Série Desconhecida";
+                    let url = "";
+
+                    const nameMatch = lines[i].match(/tvg-name="([^"]+)"/);
+                    if (nameMatch) name = nameMatch[1];
+
+                    const seasonMatch = name.match(/S(\d{2})E(\d{2})/i);
+                    if (!seasonMatch) continue;
+
+                    const season = parseInt(seasonMatch[1], 10);
+                    const episode = parseInt(seasonMatch[2], 10);
+                    const cleanName = name.replace(/S\d{2}E\d{2}/i, "").trim();
+
+                    if (lines[i + 1] && lines[i + 1].trim().startsWith("http")) {
+                        url = lines[i + 1].trim();
+                    } else continue;
+
+                    if (!series.has(cleanName)) {
+                        series.set(cleanName, { seasons: new Map() });
+                    }
+
+                    if (!series.get(cleanName).seasons.has(season)) {
+                        series.get(cleanName).seasons.set(season, []);
+                    }
+
+                    series.get(cleanName).seasons.get(season).push({ name, url });
+                }
+            }
+
+            renderSeries();
+        }
+
+        document.getElementById('searchInput').addEventListener('input', function(event) {
+            clearTimeout(timeout);
+            timeout = setTimeout(function() {
+                const query = removeAccents(event.target.value.toLowerCase());
+                renderSeries(query);
+            }, 300);
+        });
+
+        function renderSeries(query = '') {
+            const seriesContainer = document.getElementById('seriesContainer');
+            seriesContainer.innerHTML = '';
+            document.getElementById('seasonsContainer').innerHTML = '';
+            document.getElementById('episodesContainer').innerHTML = '';
+
+            const fragment = document.createDocumentFragment();
+            const sortedSeries = [...series.keys()].sort((a, b) => a.localeCompare(b));
+            const filteredSeries = sortedSeries.filter(s => removeAccents(s.toLowerCase()).includes(query));
+
+            filteredSeries.forEach(seriesName => {
+                const button = document.createElement('div');
+                button.classList.add('button');
+                button.textContent = seriesName;
+                button.addEventListener('click', function() {
+                    renderSeasons(seriesName);
+                });
+                fragment.appendChild(button);
+            });
+
+            seriesContainer.appendChild(fragment);
+        }
+
+        function renderSeasons(seriesName) {
+            const seasonsContainer = document.getElementById('seasonsContainer');
+            seasonsContainer.innerHTML = '';
+            document.getElementById('episodesContainer').innerHTML = '';
+            document.getElementById('seriesContainer').innerHTML = '';
+
+            const backButton = document.createElement('button');
+            backButton.textContent = '← Voltar para as Séries';
+            backButton.classList.add('back-button');
+            backButton.addEventListener('click', function() {
+                renderSeries();
+            });
+
+            const buttonContainer = document.createElement('div');
+            buttonContainer.classList.add('button-container');
+            buttonContainer.appendChild(backButton);
+            seasonsContainer.appendChild(buttonContainer);
+
+            const fragment = document.createDocumentFragment();
+            const seasons = [...series.get(seriesName).seasons.keys()].sort((a, b) => a - b);
+
+            seasons.forEach(season => {
+                const button = document.createElement('div');
+                button.classList.add('button');
+                button.textContent = `Temporada ${season}`;
+                button.addEventListener('click', function() {
+                    renderEpisodes(seriesName, season);
+                });
+                fragment.appendChild(button);
+            });
+
+            seasonsContainer.appendChild(fragment);
+        }
+
+        function renderEpisodes(seriesName, season) {
+            const episodesContainer = document.getElementById('episodesContainer');
+            episodesContainer.innerHTML = '';
+            document.getElementById('seasonsContainer').innerHTML = '';
+
+            const backButton = document.createElement('button');
+            backButton.textContent = '← Voltar para Temporadas';
+            backButton.classList.add('back-button');
+            backButton.addEventListener('click', function() {
+                renderSeasons(seriesName);
+            });
+
+            const buttonContainer = document.createElement('div');
+            buttonContainer.classList.add('button-container');
+            buttonContainer.appendChild(backButton);
+            episodesContainer.appendChild(buttonContainer);
+
+            const fragment = document.createDocumentFragment();
+            // Ordenando os episódios de forma crescente
+            const episodes = [...series.get(seriesName).seasons.get(season)].sort((a, b) => {
+                const episodeA = parseInt(a.name.match(/E(\d+)/)[1], 10);
+                const episodeB = parseInt(b.name.match(/E(\d+)/)[1], 10);
+                return episodeA - episodeB;
+            });
+
+            episodes.forEach(ep => {
+                const card = document.createElement('div');
+                card.classList.add('card');
+                card.innerHTML = `
+                    <p>${ep.name}</p>
+                    <a href="${ep.url}" target="_blank">Assistir</a>
+                `;
+                fragment.appendChild(card);
+            });
+
+            episodesContainer.appendChild(fragment);
+        }
+
+        function removeAccents(str) {
+            return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        }
+    </script>
+</body>
+</html>
+
